@@ -52,7 +52,8 @@ class Agent:
         response = llm_wrapper.call_model(formatted_prompt)
         with open('response.txt', 'a', encoding='utf-8') as file:
             file.write(f"{self.get_name()} response: ")
-            file.write(response)
+            file.write(f"{response.get_response_content()} \n")
+            file.write(f"Cost for response: {str(response.get_cost())}")
             file.write("\n")
             file.write("\n")
             file.write("\n")

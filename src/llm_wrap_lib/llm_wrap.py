@@ -2,6 +2,25 @@ from typing import List, Dict
 import litellm
 from litellm.utils import get_valid_models
 
+
+class Response:
+    def __init__(self, response_dict: Dict[str, any]):
+        self._content = response_dict.get('content', '')
+        self._cost = response_dict.get('cost', 0.0)
+
+    def get_cost(self) -> float:
+        """Return the cost of the LLM call."""
+        return self._cost
+
+    def get_response_content(self) -> str:
+        """Return the content of the LLM response."""
+        return self._content
+
+    def __str__(self) -> str:
+        """Return the response content when the object is cast to a string."""
+        return self.get_response_content()
+    
+
 class DynamicLLMWrapper:
     def __init__(self):
         self.available_models: Dict[str, str] = {}
@@ -33,7 +52,17 @@ class DynamicLLMWrapper:
     def get_available_models(self) -> List[str]:
         return list(self.available_models.keys())
 
-    def call_model(self, prompt: str, model_name: str = None, **kwargs) -> Dict[str, any]:
+    def _update_return_costs(self, response, model_name: str):
+        cost = response._hidden_params["response_cost"]
+        if model_name not in self.model_costs:
+            self.model_costs[model_name] = 0.0
+
+        self.model_costs[model_name] += cost
+        self.total_cost += cost
+
+        return format(cost, '.4f')
+        
+    def call_model(self, prompt: str, model_name: str = None, **kwargs) -> Response:
         if model_name is None:
             model_name = self.default_model
         
@@ -41,18 +70,13 @@ class DynamicLLMWrapper:
             raise ValueError(f"Model {model_name} is not available")
 
         response = litellm.completion(model=model_name, messages=[{"role": "user", "content": prompt}], **kwargs)
-        
-        # Update costs
-        cost = response.response_cost
-        if model_name not in self.model_costs:
-            self.model_costs[model_name] = 0.0
-        self.model_costs[model_name] += cost
-        self.total_cost += cost
 
-        return {
+        cost = self._update_return_costs(response, model_name)
+
+        return Response({
             "content": response.choices[0].message.content,
             "cost": cost
-        }
+        })
 
     def add_custom_model(self, name: str, model_path: str):
         self.available_models[name] = model_path
