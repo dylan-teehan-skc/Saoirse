@@ -1,5 +1,5 @@
-from agent.agent import Agent
-from agent.task import Task
+from agent_handler.agent import Agent
+from agent_handler.task import Task
 
 def complete_tasks():
     Mia = Agent(
@@ -20,15 +20,26 @@ def complete_tasks():
         backstory="I am a mediator",
         verbose=True)
     
-    Mia.complete_task(
+
+    # if you have generic tasks that ur repeating. Instead 
+    # having the tasks have assigned agents. Better to give 
+    # the agents the asigned tasks
+    # i.e Dylan_agent.set_task(travel_task: Task)
+    mia_task = Task(
         description="Explain where you want to go and why",
         expected_output="An explanation of where you want to go with your reasoning and pricepoints",
         output_json=False)
+    
         
-    Dylan.complete_task(
+    dylan_task = Task(
         description="Explain where you want to go and why",
         expected_output="An explanation of where you want to go with your reasoning and pricepoints",
         output_json=False)
 
+    Dylan.set_task(dylan_task)
+    Mia.set_task(mia_task)
+
+    Dylan.complete_task()
+    Mia.complete_task()
 
 
