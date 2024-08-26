@@ -9,6 +9,33 @@ from agent_handler.agent import Agent
 from agent_handler.task import Task
 #from .sidebar import Sidebar
 
+from PySide6.QtWidgets import QComboBox, QApplication
+from PySide6.QtCore import Qt, QMimeData
+from PySide6.QtGui import QDrag
+
+#drag component doesnt work yet kill me but that's tommorow me problemos
+class DragMeDown(QComboBox):  #1D reference thanks
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_start_position = event.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not (event.buttons() & Qt.LeftButton):
+            return
+        if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
+            return
+
+        drag = QDrag(self)
+        mime_data = QMimeData()
+        mime_data.setText(self.currentText())
+        drag.setMimeData(mime_data)
+
+        drop_action = drag.exec(Qt.CopyAction | Qt.MoveAction)
+        
+        if drop_action == Qt.MoveAction:
+            print(f"Dragged: {self.currentText()}")
+    
 class Sidebar(QWidget):
     toggle_signal = Signal(bool)
 
@@ -32,9 +59,9 @@ class Sidebar(QWidget):
 
         # Create the main content area
         self.content = QWidget()
-        self.content.setFixedWidth(170)  # Set a narrower width
+        self.content.setFixedWidth(170)  
         content_layout = QVBoxLayout(self.content)
-        content_layout.setContentsMargins(5, 5, 5, 5)  # Add some padding
+        content_layout.setContentsMargins(5, 5, 5, 5)  
         
         self.name_label = QLabel()
         self.name_label.setWordWrap(True)
@@ -52,7 +79,6 @@ class Sidebar(QWidget):
         self.layout.addWidget(self.toggle_bar)
         self.layout.addWidget(self.content)
         
-        # Initially hide the content
         self.content.hide()
 
     def update_properties(self, agent):
@@ -94,8 +120,11 @@ class NodeItem(QGraphicsItem):
         return QRectF(0, 0, 100, 50)
 
     def paint(self, painter, option, widget):
+
+        painter.setBrush(QBrush(Qt.white))
         painter.drawRect(self.boundingRect())
         painter.drawText(10, 20, self.state.get_name())
+
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -163,6 +192,46 @@ class NodeEditor(QGraphicsView):
         self.state_machine = StateMachine()
         self.agents = agents
         self.states = {}  # Dictionary to store State objects
+        self.setAcceptDrops(True)
+
+    def drawBackground(self, painter, rect):
+ 
+        super().drawBackground(painter, rect)
+
+        # we could do bigger/smaller if u want
+        grid_size = 20
+
+        pen = QPen(QColor(200, 200, 200), 0.5)
+        painter.setPen(pen)
+        left = int(rect.left()) - (int(rect.left()) % grid_size)
+        top = int(rect.top()) - (int(rect.top()) % grid_size)
+
+        # Draw vertical lines
+        for x in range(left, int(rect.right()), grid_size):
+            painter.drawLine(x, int(rect.top()), x, int(rect.bottom()))
+
+        # Draw horizontal lines
+        for y in range(top, int(rect.bottom()), grid_size):
+            painter.drawLine(int(rect.left()), y, int(rect.right()), y)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasText():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasText():
+            agent_name = event.mimeData().text()
+            if agent_name in self.agents:
+                agent = self.agents[agent_name]
+                pos = self.mapToScene(event.pos())
+                self.addNode(agent, pos.x(), pos.y())
+                event.setDropAction(Qt.MoveAction)
+                event.accept()
+                print(f"Dropped: {agent_name} at ({pos.x()}, {pos.y()})")
 
     def on_node_clicked(self, state):
         print(f"NodeEditor received click for state: {state.get_name()}")  # Debug print
@@ -174,6 +243,7 @@ class NodeEditor(QGraphicsView):
         node_item.signals.clicked.connect(self.on_node_clicked)
         self.scene.addItem(node_item)
         self.state_machine.add_state(state)
+       
         print(f"Added node for agent: {agent.get_name()}")  # Debug print
 
     
@@ -233,6 +303,8 @@ class NodeEditor(QGraphicsView):
                 return item
         return None
 
+
+#for the grid background
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -258,6 +330,9 @@ class MainWindow(QMainWindow):
 
         self.agent_combo = QComboBox()
         button_layout.addWidget(self.agent_combo)
+
+        # self.agent_combo = DragMeDown()
+        # button_layout.addWidget(self.agent_combo)
 
         add_agent_button = QPushButton("Add Agent")
         add_agent_button.clicked.connect(self.add_agent)
@@ -347,7 +422,10 @@ class MainWindow(QMainWindow):
             try:
                 self.node_editor.state_machine.run()
             except Exception as e:
-                print(f"An error occurred while running the state machine: {str(e)}")
+                print(f"An error occurred while running the state machine: {str(e)} ")
         else:
             print("No states in the state machine.")
-    
+
+
+
+
