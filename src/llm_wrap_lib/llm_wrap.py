@@ -1,20 +1,21 @@
 from typing import List, Dict
 import litellm
 from litellm.utils import get_valid_models
-
+import json
+from tool_handler.tool_bank import ToolBank
 
 class Response:
     def __init__(self, response_dict: Dict[str, any]):
         self._content = response_dict.get('content', '')
         self._cost = response_dict.get('cost', 0.0)
 
+    def get_response_content(self) -> str:
+        """Return the content of the LLM response."""
+        return self._content if self._content is not None else ""
+    
     def get_cost(self) -> float:
         """Return the cost of the LLM call."""
         return self._cost
-
-    def get_response_content(self) -> str:
-        """Return the content of the LLM response."""
-        return self._content
 
     def __str__(self) -> str:
         """Return the response content when the object is cast to a string."""
@@ -62,14 +63,32 @@ class DynamicLLMWrapper:
 
         return format(cost, '.4f')
         
-    def call_model(self, prompt: str, model_name: str = None, **kwargs) -> Response:
+    def call_model(self, prompt: str, model_name: str = None, tools: list = None, **kwargs) -> Response:
         if model_name is None:
             model_name = self.default_model
-        
         if model_name not in self.available_models:
             raise ValueError(f"Model {model_name} is not available")
 
-        response = litellm.completion(model=model_name, messages=[{"role": "user", "content": prompt}], **kwargs)
+        messages = [{"role": "user", "content": prompt}]
+        
+        while True:
+            response = litellm.completion(model=model_name, messages=messages, tools=tools, **kwargs)
+            
+            tool_calls = response.choices[0].message.tool_calls
+            
+            if not tool_calls:
+                # If there are no tool calls, we have our final response
+                break
+            
+            # Process tool calls
+            messages.append({"role": "assistant", "content": response.choices[0].message.content, "tool_calls": tool_calls})
+            
+            for tool_call in tool_calls:
+                tool_name = tool_call.function.name
+                tool_params = json.loads(tool_call.function.arguments)
+                tool = ToolBank().get_tool(tool_name)  # assuming ToolBank is a singleton
+                tool_response = tool.call(**tool_params)
+                messages.append({"role": "tool", "content": str(tool_response), "tool_call_id": tool_call.id})
 
         cost = self._update_return_costs(response, model_name)
 
