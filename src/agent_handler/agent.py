@@ -1,6 +1,7 @@
 from llm_wrap_lib.llm_wrap import DynamicLLMWrapper
 from agent_handler.task import Task
 import os
+from tool_handler.tool import Tool
 
 class Agent:
     def __init__(self, name, goal, backstory, verbose):
@@ -10,12 +11,16 @@ class Agent:
         self._verbose = verbose
         self._current_task = None
         self._llm_wrapper = DynamicLLMWrapper()  # Initialize once
+        self.tools = []
 
     def get_name(self):
         return self._name
 
     def set_name(self, new_name):
         self._name = new_name
+
+    def add_tool(self, tool: Tool):
+        self.tools.append(tool)
 
     def get_goal(self):
         return self._goal
@@ -44,7 +49,8 @@ class Agent:
     def execute_task(self):
         if self._current_task is None:
             raise ValueError("No task is set for the agent")
-
+        
+        tools = [tool.export() for tool in self.tools]
         script_dir = os.path.dirname(os.path.abspath(__file__))
         prompt_file = os.path.join(script_dir, "prompt.txt")
 
@@ -61,7 +67,7 @@ class Agent:
             agent_backstory=self.get_backstory()
         )
         
-        response = self._llm_wrapper.call_model(formatted_prompt)
+        response = self._llm_wrapper.call_model(formatted_prompt, tools=tools)
 
         with open('response.txt', 'a', encoding='utf-8') as file:
             file.write(f"{self.get_name()} response: ")
