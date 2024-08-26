@@ -6,12 +6,18 @@ class State(Agent):
         super().__init__(name=agent.get_name(), goal=agent.get_goal(), backstory=agent.get_backstory(), verbose=agent.get_verbose())
         self._current_task = agent.get_task()  # Transfer the task from the agent to the state
         self.action = self.execute_task
+        self.agent = agent  # Keep a reference to the original agent
 
     def execute_task(self):
         if self._current_task is None:
             print(f"No task is set for the agent {self.get_name()}. Skipping execution.")
             return
         return super().execute_task()
+
+    def get_agent(self):
+        return self.agent
+
+  
 
 
 class Transition:
