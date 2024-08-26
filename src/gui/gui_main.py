@@ -1,14 +1,69 @@
 import sys
 import json
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QPushButton, QFileDialog, QInputDialog, QComboBox
-from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtWidgets import QFrame, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QPushButton, QFileDialog, QInputDialog, QComboBox, QSplitter, QLabel
+from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QObject, QSize
 from PySide6.QtGui import QPen, QColor, QPainter, QBrush
 
 from gui.state import State, StateMachine
 from agent_handler.agent import Agent
 from agent_handler.task import Task
+#from .sidebar import Sidebar
+
+class Sidebar(QWidget):
+    toggle_signal = Signal(bool)
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.layout)
+
+        # Create a narrow bar for the toggle button
+        self.toggle_bar = QFrame()
+        self.toggle_bar.setMaximumWidth(30)
+        self.toggle_bar.setMinimumWidth(30)
+        toggle_bar_layout = QVBoxLayout(self.toggle_bar)
+        
+        self.toggle_button = QPushButton("◀")  # Left arrow for collapse
+        self.toggle_button.setFixedSize(QSize(25, 50))
+        self.toggle_button.clicked.connect(self.toggle_sidebar)
+        toggle_bar_layout.addWidget(self.toggle_button)
+        toggle_bar_layout.addStretch()
+
+        # Create the main content area
+        self.content = QWidget()
+        content_layout = QVBoxLayout(self.content)
+        
+        self.name_label = QLabel()
+        self.goal_label = QLabel()
+        self.backstory_label = QLabel()
+        
+        content_layout.addWidget(self.name_label)
+        content_layout.addWidget(self.goal_label)
+        content_layout.addWidget(self.backstory_label)
+        content_layout.addStretch()
+
+        # Add toggle bar and content to main layout
+        self.layout.addWidget(self.toggle_bar)
+        self.layout.addWidget(self.content)
+
+    def update_properties(self, agent):
+        print(f"Sidebar updating properties for agent: {agent.get_name()}")  # Debug print
+        self.name_label.setText(f"Name: {agent.get_name()}")
+        self.goal_label.setText(f"Goal: {agent.get_goal()}")
+        self.backstory_label.setText(f"Backstory: {agent.get_backstory()}")
+
+    def toggle_sidebar(self):
+        is_expanded = self.content.isVisible()
+        self.toggle_signal.emit(not is_expanded)
+        self.toggle_button.setText("▶" if is_expanded else "◀")
+
+class NodeSignals(QObject):
+    clicked = Signal(object)
 
 class NodeItem(QGraphicsItem):
+    # clicked = Signal(Agent)
+
     def __init__(self, state, x, y):
         super().__init__()
         self.state = state
@@ -20,6 +75,8 @@ class NodeItem(QGraphicsItem):
         self.input_port.setPos(0, 25)
         self.output_port = Port(self, "output", True)
         self.output_port.setPos(90, 25)
+        self.connections = []
+        self.signals = NodeSignals()
 
     def boundingRect(self):
         return QRectF(0, 0, 100, 50)
@@ -27,6 +84,11 @@ class NodeItem(QGraphicsItem):
     def paint(self, painter, option, widget):
         painter.drawRect(self.boundingRect())
         painter.drawText(10, 20, self.state.get_name())
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.signals.clicked.emit(self.state)
+        super().mousePressEvent(event)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
@@ -69,6 +131,8 @@ class Connection(QGraphicsLineItem):
         self.setLine(start_pos.x(), start_pos.y(), end_pos.x(), end_pos.y())
 
 class NodeEditor(QGraphicsView):
+    node_clicked = Signal(object)  # Signal to emit when a node is clicked
+
     def __init__(self, agents):
         super().__init__()
         self.scene = QGraphicsScene(self)
@@ -88,7 +152,19 @@ class NodeEditor(QGraphicsView):
         self.agents = agents
         self.states = {}  # Dictionary to store State objects
 
+    def on_node_clicked(self, state):
+        print(f"NodeEditor received click for state: {state.get_name()}")  # Debug print
+        self.node_clicked.emit(state.get_agent())  # Use get_agent() method
 
+    def addNode(self, agent, x, y):
+        state = State(agent)
+        node_item = NodeItem(state, x, y)
+        node_item.signals.clicked.connect(self.on_node_clicked)
+        self.scene.addItem(node_item)
+        self.state_machine.add_state(state)
+        print(f"Added node for agent: {agent.get_name()}")  # Debug print
+
+    
     def wheelEvent(self, event):
         zoom_in_factor = 1.25
         zoom_out_factor = 1 / zoom_in_factor
@@ -145,28 +221,29 @@ class NodeEditor(QGraphicsView):
                 return item
         return None
 
-    def addNode(self, agent, x, y):
-        state = State(agent)
-        node_item = NodeItem(state, x, y)
-        self.scene.addItem(node_item)
-        self.state_machine.add_state(state)
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Agent-based State Machine Editor")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 1000, 600)
 
         self.agents = {}  # This will be set from outside
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
         central_widget.setLayout(layout)
 
+       
+        self.sidebar = Sidebar()
+        self.sidebar.toggle_signal.connect(self.toggle_sidebar)
+        
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+
         button_layout = QHBoxLayout()
-        layout.addLayout(button_layout)
+        content_layout.addLayout(button_layout)
 
         self.agent_combo = QComboBox()
         button_layout.addWidget(self.agent_combo)
@@ -188,7 +265,34 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(run_button)
 
         self.node_editor = NodeEditor(self.agents)
-        layout.addWidget(self.node_editor)
+        content_layout.addWidget(self.node_editor)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(self.sidebar)
+        splitter.addWidget(content_widget)
+        splitter.setStretchFactor(1, 1)
+
+        layout.addWidget(splitter)
+
+        self.node_editor.node_clicked.connect(self.update_sidebar)
+
+    # def update_sidebar(self, agent):
+    #     print(f"MainWindow updating sidebar for agent: {agent.get_name()}")  # Debug print
+    #     self.sidebar.update_properties(agent)
+
+    def toggle_sidebar(self, show):
+        if show:
+            self.sidebar.content.show()
+            self.splitter.setSizes([200, self.width() - 200])  # Adjust these values as needed
+        else:
+            self.sidebar.content.hide()
+            self.splitter.setSizes([30, self.width() - 30])  # 30 is the width of the toggle bar
+
+    def update_sidebar(self, agent):
+        self.sidebar.update_properties(agent)
+        if not self.sidebar.content.isVisible():
+            self.toggle_sidebar(True)
+
 
     def set_agents(self, agents):
         self.agents = agents
@@ -203,6 +307,7 @@ class MainWindow(QMainWindow):
             self.node_editor.addNode(agent, 0, 0)
         else:
             print(f"Agent {selected_agent_name} not found.")
+
 
     def save_state_machine(self):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save State Machine", "", "JSON Files (*.json)")
@@ -236,3 +341,11 @@ class MainWindow(QMainWindow):
                 print(f"An error occurred while running the state machine: {str(e)}")
         else:
             print("No states in the state machine.")
+    
+    def toggle_sidebar(self, show):
+        if show:
+            self.sidebar.show()
+            self.splitter.setSizes([200, self.width() - 200])  # Adjust these values as needed
+        else:
+            self.sidebar.hide()
+            self.splitter.setSizes([0, self.width()])
