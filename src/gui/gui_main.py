@@ -20,11 +20,11 @@ class Sidebar(QWidget):
 
         # Create a narrow bar for the toggle button
         self.toggle_bar = QFrame()
-        self.toggle_bar.setMaximumWidth(30)
-        self.toggle_bar.setMinimumWidth(30)
+        self.toggle_bar.setFixedWidth(30)
         toggle_bar_layout = QVBoxLayout(self.toggle_bar)
+        toggle_bar_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.toggle_button = QPushButton("◀")  # Left arrow for collapse
+        self.toggle_button = QPushButton("►")  # Right arrow for expand
         self.toggle_button.setFixedSize(QSize(25, 50))
         self.toggle_button.clicked.connect(self.toggle_sidebar)
         toggle_bar_layout.addWidget(self.toggle_button)
@@ -32,11 +32,16 @@ class Sidebar(QWidget):
 
         # Create the main content area
         self.content = QWidget()
+        self.content.setFixedWidth(170)  # Set a narrower width
         content_layout = QVBoxLayout(self.content)
+        content_layout.setContentsMargins(5, 5, 5, 5)  # Add some padding
         
         self.name_label = QLabel()
+        self.name_label.setWordWrap(True)
         self.goal_label = QLabel()
+        self.goal_label.setWordWrap(True)
         self.backstory_label = QLabel()
+        self.backstory_label.setWordWrap(True)
         
         content_layout.addWidget(self.name_label)
         content_layout.addWidget(self.goal_label)
@@ -46,17 +51,24 @@ class Sidebar(QWidget):
         # Add toggle bar and content to main layout
         self.layout.addWidget(self.toggle_bar)
         self.layout.addWidget(self.content)
+        
+        # Initially hide the content
+        self.content.hide()
 
     def update_properties(self, agent):
-        print(f"Sidebar updating properties for agent: {agent.get_name()}")  # Debug print
         self.name_label.setText(f"Name: {agent.get_name()}")
         self.goal_label.setText(f"Goal: {agent.get_goal()}")
         self.backstory_label.setText(f"Backstory: {agent.get_backstory()}")
 
     def toggle_sidebar(self):
         is_expanded = self.content.isVisible()
+        self.content.setVisible(not is_expanded)
         self.toggle_signal.emit(not is_expanded)
-        self.toggle_button.setText("▶" if is_expanded else "◀")
+        self.toggle_button.setText("◄" if not is_expanded else "►")
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.content.hide() 
 
 class NodeSignals(QObject):
     clicked = Signal(object)
@@ -235,7 +247,6 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout()
         central_widget.setLayout(layout)
 
-       
         self.sidebar = Sidebar()
         self.sidebar.toggle_signal.connect(self.toggle_sidebar)
         
@@ -276,23 +287,21 @@ class MainWindow(QMainWindow):
 
         self.node_editor.node_clicked.connect(self.update_sidebar)
 
-    # def update_sidebar(self, agent):
-    #     print(f"MainWindow updating sidebar for agent: {agent.get_name()}")  # Debug print
-    #     self.sidebar.update_properties(agent)
-
     def toggle_sidebar(self, show):
         if show:
             self.sidebar.content.show()
-            self.splitter.setSizes([200, self.width() - 200])  # Adjust these values as needed
         else:
             self.sidebar.content.hide()
-            self.splitter.setSizes([30, self.width() - 30])  # 30 is the width of the toggle bar
 
     def update_sidebar(self, agent):
         self.sidebar.update_properties(agent)
         if not self.sidebar.content.isVisible():
             self.toggle_sidebar(True)
+    # def update_sidebar(self, agent):
+    #     print(f"MainWindow updating sidebar for agent: {agent.get_name()}")  # Debug print
+    #     self.sidebar.update_properties(agent)
 
+    
 
     def set_agents(self, agents):
         self.agents = agents
@@ -342,10 +351,3 @@ class MainWindow(QMainWindow):
         else:
             print("No states in the state machine.")
     
-    def toggle_sidebar(self, show):
-        if show:
-            self.sidebar.show()
-            self.splitter.setSizes([200, self.width() - 200])  # Adjust these values as needed
-        else:
-            self.sidebar.hide()
-            self.splitter.setSizes([0, self.width()])
