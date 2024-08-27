@@ -3,12 +3,17 @@ from PySide6.QtCore import Qt, Signal, Slot, QPointF, QRectF, QObject
 from PySide6.QtGui import QPen, QColor, QPainter, QBrush
 
 from gui.state import State, StateWrapper, StateMachine
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsLineItem, QGraphicsItem, QGraphicsEllipseItem, QGraphicsProxyWidget, QCheckBox
+from PySide6.QtCore import Qt, Signal, Slot, QPointF, QRectF, QObject
+from PySide6.QtGui import QPen, QColor, QPainter, QBrush
+
+from gui.state import State, StateWrapper, StateMachine
 
 class NodeSignals(QObject):
     clicked = Signal(object)
 
 class NodeItem(QGraphicsItem):
-    def __init__(self, state, x, y):
+    def __init__(self, state, x, y, parent_editor):
         super().__init__()
         self.state = state
         self.setPos(x, y)
@@ -22,6 +27,7 @@ class NodeItem(QGraphicsItem):
         self.connections = []
         self.signals = NodeSignals()
         self.is_highlighted = False
+        self.parent_editor = parent_editor
 
     def boundingRect(self):
         return QRectF(0, 0, 100, 50)
@@ -44,7 +50,8 @@ class NodeItem(QGraphicsItem):
         super().mousePressEvent(event)
 
     def itemChange(self, change, value):
-        if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            self.parent_editor.update_last_node_pos(self.pos())
             for conn in self.connections:
                 conn.updatePosition()
         return super().itemChange(change, value)
@@ -99,7 +106,7 @@ class Connection(QGraphicsLineItem):
     def updateCheckboxPosition(self):
         if self.scene():
             line = self.line()
-            center = line.pointAt(0.5)
+            center = line.pointAt(0.2)
             self.checkbox_proxy.setPos(center)
 
     def paint(self, painter, option, widget=None):
@@ -133,6 +140,12 @@ class NodeEditor(QGraphicsView):
         self.agents = agents
         self.states = {}
         self.setAcceptDrops(True)
+
+        self.last_node_pos = QPointF(0, 0)
+        self.node_spacing = 120
+
+    def update_last_node_pos(self, pos):
+        self.last_node_pos = pos
 
     @Slot(StateWrapper)
     def on_state_changed(self, state_wrapper):
@@ -185,13 +198,20 @@ class NodeEditor(QGraphicsView):
         print(f"NodeEditor received click for state: {state.get_name()}")
         self.node_clicked.emit(StateWrapper(state))
 
-    def addNode(self, agent, x, y):
+    def addNode(self, agent, x=None, y=None):
+        if x is None or y is None:
+            x = self.last_node_pos.x() + self.node_spacing
+            y = self.last_node_pos.y()
+
         state = State(agent)
-        node_item = NodeItem(state, x, y)
+        node_item = NodeItem(state, x, y, self)
         node_item.signals.clicked.connect(self.on_node_clicked)
         self.scene.addItem(node_item)
         self.state_machine.add_state(state)
-        print(f"Added node for agent: {agent.get_name()}")
+        
+        self.last_node_pos = QPointF(x, y)
+        
+        print(f"Added node for agent: {agent.get_name()} at ({x}, {y})")
         return node_item
 
     def wheelEvent(self, event):

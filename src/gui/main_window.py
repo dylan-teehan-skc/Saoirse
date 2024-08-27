@@ -7,7 +7,9 @@ from PySide6.QtCore import Qt, QThread, Slot, Signal, QObject
 from gui.node_editor import NodeEditor, Connection
 from gui.sidebar import Sidebar
 from gui.agent_widget import DraggableAgentWidget
-from gui.state import StateMachine, StateWrapper
+from gui.state import StateMachine
+from gui.agent_widget import DraggableAgentWidget
+import json
 
 class StateMachineWorker(QObject):
     finished = Signal()
@@ -121,7 +123,7 @@ class MainWindow(QMainWindow):
         selected_agent_name = self.agent_combo.currentText()
         if selected_agent_name in self.agents:
             agent = self.agents[selected_agent_name]
-            self.node_editor.addNode(agent, 0, 0)
+            self.node_editor.addNode(agent)
         else:
             print(f"Agent {selected_agent_name} not found.")
 
