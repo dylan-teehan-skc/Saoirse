@@ -1,21 +1,35 @@
 import sys
 import json
-from PySide6.QtWidgets import QFrame, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QPushButton, QFileDialog, QInputDialog, QComboBox, QSplitter, QLabel
-from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QObject, QSize
-from PySide6.QtGui import QPen, QColor, QPainter, QBrush
-
-from gui.state import State, StateMachine
+from PySide6.QtWidgets import (
+    QFrame, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, 
+    QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QPushButton, QFileDialog, QInputDialog, QComboBox, QSplitter, 
+    QLabel, QCheckBox, QGraphicsProxyWidget, QApplication, QMessageBox, QScrollArea
+)
+from PySide6.QtCore import (
+    Qt, QPointF, QRectF, Signal, QObject, QSize, QMimeData, QThread, Slot 
+)
+from PySide6.QtGui import (
+    QPen, QColor, QPainter, QBrush, QDrag, QPixmap
+)
+from gui.state import State, StateMachine, StateWrapper
 from agent_handler.agent import Agent
 from agent_handler.task import Task
 
-from PySide6.QtWidgets import QComboBox, QApplication, QScrollArea
-from PySide6.QtCore import Qt, QMimeData
-from PySide6.QtGui import QDrag, QPixmap
+class StateMachineWorker(QObject):
+    finished = Signal()
+    error = Signal(str)
 
-#drag component doesnt work yet kill me but that's tommorow me problemos
-from PySide6.QtWidgets import QComboBox, QApplication
-from PySide6.QtCore import Qt, QMimeData
-from PySide6.QtGui import QDrag, QPixmap, QPainter
+    def __init__(self, state_machine):
+        super().__init__()
+        self.state_machine = state_machine
+
+    @Slot()
+    def run(self):
+        try:
+            self.state_machine.run()
+            self.finished.emit()
+        except Exception as e:
+            self.error.emit(str(e))
 
 class DraggableAgentWidget(QLabel):
     def __init__(self, agent, parent=None):
@@ -24,14 +38,6 @@ class DraggableAgentWidget(QLabel):
         self.setText(self.format_text(agent.get_name()))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet("border: 1px solid black; padding: 5px;")
-        # self.setStyleSheet("""
-        #     QLabel {
-        #         border: 1px solid black;
-        #         background-color: white;
-        #         padding: 5px;
-        #         font-weight: bold;
-        #     }
-        # """)
         self.setFixedSize(100, 50)
     
     def format_text(self, text):
@@ -41,8 +47,7 @@ class DraggableAgentWidget(QLabel):
             return '\n'.join([' '.join(words[:mid]), ' '.join(words[mid:])])
         return text
 
-
-    def mousePressEvent(self, event): 
+    def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start_position = event.pos()
 
@@ -62,7 +67,7 @@ class DraggableAgentWidget(QLabel):
         drag.setPixmap(pixmap)
 
         drag.exec(Qt.DropAction.CopyAction)
-    
+
 class Sidebar(QWidget):
     toggle_signal = Signal(bool)
 
@@ -102,11 +107,27 @@ class Sidebar(QWidget):
         content_layout.addWidget(self.backstory_label)
         content_layout.addStretch()
 
+        self.context_label = QLabel()
+        self.context_label.setWordWrap(True)
+        self.response_label = QLabel()
+        self.response_label.setWordWrap(True)
+
+        content_layout.addWidget(QLabel("Context:"))
+        content_layout.addWidget(self.context_label)
+        content_layout.addWidget(QLabel("Response:"))
+        content_layout.addWidget(self.response_label)
+        content_layout.addStretch()
+
         # Add toggle bar and content to main layout
         self.layout.addWidget(self.toggle_bar)
         self.layout.addWidget(self.content)
         
         self.content.hide()
+
+
+    def update_context_and_response(self, context, response):
+        self.context_label.setText(context)
+        self.response_label.setText(response)
 
     def update_properties(self, agent):
         self.name_label.setText(f"Name: {agent.get_name()}")
@@ -127,8 +148,6 @@ class NodeSignals(QObject):
     clicked = Signal(object)
 
 class NodeItem(QGraphicsItem):
-    # clicked = Signal(Agent)
-
     def __init__(self, state, x, y):
         super().__init__()
         self.state = state
@@ -142,15 +161,22 @@ class NodeItem(QGraphicsItem):
         self.output_port.setPos(90, 25)
         self.connections = []
         self.signals = NodeSignals()
+        self.is_highlighted = False
 
     def boundingRect(self):
         return QRectF(0, 0, 100, 50)
 
     def paint(self, painter, option, widget):
-
-        painter.setBrush(QBrush(Qt.white))
+        if self.is_highlighted:
+            painter.setBrush(QBrush(Qt.yellow))
+        else:
+            painter.setBrush(QBrush(Qt.white))
         painter.drawRect(self.boundingRect())
         painter.drawText(10, 20, self.state.get_name())
+
+    def highlight(self, highlight=True):
+        self.is_highlighted = highlight
+        self.update()
 
 
     def mousePressEvent(self, event):
@@ -182,24 +208,52 @@ class Port(QGraphicsEllipseItem):
         self.setBrush(QBrush(Qt.gray))
         super().hoverLeaveEvent(event)
 
+
 class Connection(QGraphicsLineItem):
-    def __init__(self, start_item, end_item):
+    def __init__(self, start_item, end_item, pass_context=False):
         super().__init__()
         self.start_item = start_item
         self.end_item = end_item
+        self.pass_context = pass_context
         self.setZValue(-1)
         self.setPen(QPen(Qt.green, 2))
         self.start_item.connections.append(self)
         self.end_item.connections.append(self)
         self.updatePosition()
 
+        # Add a checkbox for context passing
+        self.context_checkbox = QCheckBox("Pass Context")
+        self.context_checkbox.setChecked(pass_context)
+        self.context_checkbox.stateChanged.connect(self.toggleContextPassing)
+
+        # Add the checkbox to the scene
+        self.checkbox_proxy = QGraphicsProxyWidget(self)
+        self.checkbox_proxy.setWidget(self.context_checkbox)
+        self.updateCheckboxPosition()
+
+    def toggleContextPassing(self, state):
+        self.pass_context = (state == Qt.Checked)
+
     def updatePosition(self):
         start_pos = self.start_item.mapToScene(self.start_item.output_port.pos() + QPointF(5, 5))
         end_pos = self.end_item.mapToScene(self.end_item.input_port.pos() + QPointF(5, 5))
         self.setLine(start_pos.x(), start_pos.y(), end_pos.x(), end_pos.y())
+        self.updateCheckboxPosition()
+
+    def updateCheckboxPosition(self):
+        if self.scene():
+            line = self.line()
+            center = line.pointAt(0.5)
+            self.checkbox_proxy.setPos(center)
+
+    def paint(self, painter, option, widget=None):
+        super().paint(painter, option, widget)
+        if self.pass_context:
+            painter.drawText(self.boundingRect().center(), "Context")
 
 class NodeEditor(QGraphicsView):
-    node_clicked = Signal(object)  # Signal to emit when a node is clicked
+    node_clicked = Signal(StateWrapper)  # Changed to emit StateWrapper
+    node_properties_updated = Signal(StateWrapper)
 
     def __init__(self, agents):
         super().__init__()
@@ -214,14 +268,34 @@ class NodeEditor(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
 
+        self.state_machine = StateMachine()
+        self.state_machine.state_changed.connect(self.on_state_changed)
+        self.state_machine.execution_finished.connect(self.clear_highlights)
+
         self.connection_start = None
         self.current_connection = None
-        self.state_machine = StateMachine()
         self.agents = agents
-        self.states = {} 
+        self.states = {}  # Dictionary to store State objects
         self.setAcceptDrops(True)
-        
-        self.setDragMode(QGraphicsView.NoDrag)
+
+
+    @Slot(StateWrapper)
+    def on_state_changed(self, state_wrapper):
+        for item in self.scene.items():
+            if isinstance(item, NodeItem):
+                item.highlight(item.state == state_wrapper.get_state())
+        self.node_properties_updated.emit(state_wrapper)
+        # Connect to the response_ready signal
+        state_wrapper.response_ready.connect(self.on_response_ready)
+
+    @Slot(str)
+    def on_response_ready(self, response):
+        # Update the UI with the new response
+        current_state = self.state_machine.current_state
+        if current_state:
+            state_wrapper = StateWrapper(current_state)
+            state_wrapper.update_response(response)
+            self.node_properties_updated.emit(state_wrapper)
 
     def drawBackground(self, painter, rect):
  
@@ -243,8 +317,6 @@ class NodeEditor(QGraphicsView):
         for y in range(top, int(rect.bottom()), grid_size):
             painter.drawLine(int(rect.left()), y, int(rect.right()), y)
 
-   
-
     def dragEnterEvent(self, event):
         if event.mimeData().hasText():
             event.acceptProposedAction()
@@ -260,20 +332,23 @@ class NodeEditor(QGraphicsView):
                 agent = self.agents[agent_name]
                 pos = self.mapToScene(event.pos())
                 self.addNode(agent, pos.x(), pos.y())
-                event.acceptProposedAction()
-            else:
-                event.ignore()
-        else:
-            event.ignore()
+                event.setDropAction(Qt.MoveAction)
+                event.accept()
+                print(f"Dropped: {agent_name} at ({pos.x()}, {pos.y()})")
+
+    def on_node_clicked(self, state):
+        print(f"NodeEditor received click for state: {state.get_name()}")
+        self.node_clicked.emit(StateWrapper(state))  # Emit StateWrapper
 
     def addNode(self, agent, x, y):
         state = State(agent)
         node_item = NodeItem(state, x, y)
-        node_item.signals.clicked.connect(self.node_clicked)
+        node_item.signals.clicked.connect(self.on_node_clicked)
         self.scene.addItem(node_item)
         self.state_machine.add_state(state)
        
         print(f"Added node for agent: {agent.get_name()}")  # Debug print
+        return node_item  # Return the created node_item
 
     
     def wheelEvent(self, event):
@@ -286,6 +361,11 @@ class NodeEditor(QGraphicsView):
             zoom_factor = zoom_out_factor
 
         self.scale(zoom_factor, zoom_factor)
+
+    def mouseMoveEvent(self, event):
+        if self.connection_start:
+            self.updateConnection(event.pos())
+        super().mouseMoveEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -300,11 +380,6 @@ class NodeEditor(QGraphicsView):
                 super().mousePressEvent(event)
         else:
             super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self.connection_start:
-            self.updateConnection(event.pos())
-        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if self.connection_start:
@@ -331,7 +406,22 @@ class NodeEditor(QGraphicsView):
             if isinstance(item, NodeItem):
                 return item
         return None
+    
 
+    @Slot(StateWrapper)
+    def highlight_current_node(self, state_wrapper):
+        state = state_wrapper.get_state()
+        for item in self.scene.items():
+            if isinstance(item, NodeItem):
+                item.highlight(item.state == state)
+        self.node_properties_updated.emit(state_wrapper)
+
+
+    @Slot()
+    def clear_highlights(self):
+        for item in self.scene.items():
+            if isinstance(item, NodeItem):
+                item.highlight(False)
 
 #for the grid background
 class MainWindow(QMainWindow):
@@ -340,7 +430,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Agent-based State Machine Editor")
         self.setGeometry(100, 100, 1000, 600)
 
-        self.agents = {}
+        self.agents = {}  # This will be set from outside
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -350,14 +440,13 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar()
         self.sidebar.toggle_signal.connect(self.toggle_sidebar)
-
+        
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
 
         button_layout = QHBoxLayout()
         content_layout.addLayout(button_layout)
 
-        #NORMAL DROPDOWN AGENTS SYSTEM
         self.agent_combo = QComboBox()
         button_layout.addWidget(self.agent_combo)
 
@@ -377,29 +466,34 @@ class MainWindow(QMainWindow):
         run_button.clicked.connect(self.run_state_machine)
         button_layout.addWidget(run_button)
 
-        #THIS IS DRAG AND DROP AGENTS SYSTEM
+        # Add draggable agents list
         self.agents_list = QListWidget()
         self.agents_list.setFlow(QListWidget.LeftToRight)
         self.agents_list.setWrapping(False)
         self.agents_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.agents_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.agents_list.setMaximumHeight(52)  # Adjust as needed
+        self.agents_list.setMaximumHeight(52)
         content_layout.addWidget(QLabel("Draggable Agents:"))
         content_layout.addWidget(self.agents_list)
-        
 
         self.node_editor = NodeEditor(self.agents)
         content_layout.addWidget(self.node_editor)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.sidebar)
         splitter.addWidget(content_widget)
         splitter.setStretchFactor(1, 1)
 
         layout.addWidget(splitter)
 
+        self.node_editor.node_clicked.connect(self.update_sidebar_on_click)
+        self.node_editor.node_properties_updated.connect(self.update_sidebar_with_context_and_response)
 
-        self.node_editor.node_clicked.connect(self.update_sidebar)
+        self.worker = None
+        self.thread = None
+
+    
+
     def toggle_sidebar(self, show):
         if show:
             self.sidebar.content.show()
@@ -410,11 +504,6 @@ class MainWindow(QMainWindow):
         self.sidebar.update_properties(agent)
         if not self.sidebar.content.isVisible():
             self.toggle_sidebar(True)
-    # def update_sidebar(self, agent):
-    #     print(f"MainWindow updating sidebar for agent: {agent.get_name()}")  # Debug print
-    #     self.sidebar.update_properties(agent)
-
-    
 
     def set_agents(self, agents):
         self.agents = agents
@@ -443,8 +532,18 @@ class MainWindow(QMainWindow):
     def save_state_machine(self):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save State Machine", "", "JSON Files (*.json)")
         if file_name:
+            data = self.node_editor.state_machine.to_dict()
+            # Add context passing information to the data
+            for state in data['states']:
+                state['connections'] = []
+                for connection in self.node_editor.scene.items():
+                    if isinstance(connection, Connection) and connection.start_item.state.get_name() == state['name']:
+                        state['connections'].append({
+                            'to': connection.end_item.state.get_name(),
+                            'pass_context': connection.pass_context
+                        })
             with open(file_name, 'w') as f:
-                json.dump(self.node_editor.state_machine.to_dict(), f)
+                json.dump(data, f)
 
     def load_state_machine(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Load State Machine", "", "JSON Files (*.json)")
@@ -453,25 +552,68 @@ class MainWindow(QMainWindow):
                 data = json.load(f)
                 self.node_editor.state_machine = StateMachine.from_dict(data, self.agents)
                 self.node_editor.scene.clear()
-                for state in self.node_editor.state_machine.states:
-                    self.node_editor.addNode(state.agent, 0, 0)
-                for from_state, transitions in self.node_editor.state_machine.states.items():
-                    for transition in transitions:
-                        from_item = next(item for item in self.node_editor.scene.items() if isinstance(item, NodeItem) and item.state == from_state)
-                        to_item = next(item for item in self.node_editor.scene.items() if isinstance(item, NodeItem) and item.state == transition.target_state)
-                        connection = Connection(from_item, to_item)
+                node_items = {}
+                for state_data in data['states']:
+                    state = next(s for s in self.node_editor.state_machine.states if s.get_name() == state_data['name'])
+                    node_item = self.node_editor.addNode(state.agent, state_data['x'], state_data['y'])
+                    node_items[state.get_name()] = node_item
+                for state_data in data['states']:
+                    for connection_data in state_data.get('connections', []):
+                        from_item = node_items[state_data['name']]
+                        to_item = node_items[connection_data['to']]
+                        connection = Connection(from_item, to_item, connection_data['pass_context'])
                         self.node_editor.scene.addItem(connection)
+
+    def update_sidebar_on_click(self, state_wrapper):
+        state = state_wrapper.get_state()
+        self.sidebar.update_properties(state.agent)
+        context_text = str(state.context) if state.context else "No context"
+        response_text = str(state.get_response()) if state.get_response() else "No response yet"
+        self.sidebar.update_context_and_response(context_text, response_text)
+        if not self.sidebar.content.isVisible():
+            self.toggle_sidebar(True)
+
+    def update_sidebar_with_context_and_response(self, state_wrapper):
+        state = state_wrapper.get_state()
+        self.sidebar.update_properties(state.agent)
+        context_text = str(state.context) if state.context else "No context"
+        response_text = str(state.get_response()) if state.get_response() else "No response yet"
+        self.sidebar.update_context_and_response(context_text, response_text)
+        if not self.sidebar.content.isVisible():
+            self.toggle_sidebar(True)
+
 
     def run_state_machine(self):
         initial_state = next(iter(self.node_editor.state_machine.states), None)
         if initial_state:
             self.node_editor.state_machine.set_initial_state(initial_state)
-            try:
-                self.node_editor.state_machine.run()
-            except Exception as e:
-                print(f"An error occurred while running the state machine: {str(e)} ")
+
+            # Create a new thread and worker
+            self.thread = QThread()
+            self.worker = StateMachineWorker(self.node_editor.state_machine)
+            self.worker.moveToThread(self.thread)
+
+            # Connect signals and slots
+            self.thread.started.connect(self.worker.run)
+            self.worker.finished.connect(self.thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.thread.finished.connect(self.thread.deleteLater)
+            self.worker.error.connect(self.handle_error)
+
+            # Start the thread
+            self.thread.start()
+
         else:
             print("No states in the state machine.")
+
+    def handle_error(self, error_message):
+        QMessageBox.critical(self, "Error", f"An error occurred while running the state machine: {error_message}")
+
+    def closeEvent(self, event):
+        if self.thread and self.thread.isRunning():
+            self.thread.quit()
+            self.thread.wait()
+        super().closeEvent(event)
 
 
 
