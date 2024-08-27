@@ -3,7 +3,7 @@ import json
 from PySide6.QtWidgets import (
     QFrame, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, 
     QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QPushButton, QFileDialog, QInputDialog, QComboBox, QSplitter, 
-    QLabel, QCheckBox, QGraphicsProxyWidget, QComboBox, QApplication
+    QLabel, QCheckBox, QGraphicsProxyWidget, QComboBox, QApplication, QMessageBox
 )
 from PySide6.QtCore import (
     Qt, QPointF, QRectF, Signal, QObject, QSize, QMimeData, QThread, Slot 
