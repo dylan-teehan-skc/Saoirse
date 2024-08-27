@@ -17,8 +17,6 @@ class State:
         self.response = self.agent.execute_task()
         return self.response
 
-
-
     def add_connection(self, to_state: 'State', pass_context: bool = False):
         self.connections.append((to_state, pass_context))
 
