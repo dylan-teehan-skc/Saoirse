@@ -7,7 +7,6 @@ from PySide6.QtGui import QPen, QColor, QPainter, QBrush
 from gui.state import State, StateMachine
 from agent_handler.agent import Agent
 from agent_handler.task import Task
-#from .sidebar import Sidebar
 
 from PySide6.QtWidgets import QComboBox, QApplication, QScrollArea
 from PySide6.QtCore import Qt, QMimeData
@@ -43,7 +42,7 @@ class DraggableAgentWidget(QLabel):
         return text
 
 
-    def mousePressEvent(self, event):
+    def mousePressEvent(self, event): 
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start_position = event.pos()
 
@@ -56,7 +55,7 @@ class DraggableAgentWidget(QLabel):
         drag = QDrag(self)
         mime_data = QMimeData()
         mime_data.setText(self.agent.get_name())
-        drag.setMimeData(mime_data)
+        drag.setMimeData(mime_data) 
 
         pixmap = QPixmap(self.size())
         self.render(pixmap)
