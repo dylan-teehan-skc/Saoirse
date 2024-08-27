@@ -63,14 +63,20 @@ class DynamicLLMWrapper:
 
         return format(cost, '.4f')
         
-    def call_model(self, prompt: str, model_name: str = None, tools: list = None, **kwargs) -> Response:
+    def call_model(self, prompt: str, model_name: str = None, tools: list = [], **kwargs) -> Response:
         if model_name is None:
             model_name = self.default_model
         if model_name not in self.available_models:
             raise ValueError(f"Model {model_name} is not available")
 
         messages = [{"role": "user", "content": prompt}]
-        
+
+        # if tools is not empty, we need to process the tool calls
+        # else we need to pass none
+        if not tools:
+            tools = None
+            
+
         while True:
             response = litellm.completion(model=model_name, messages=messages, tools=tools, **kwargs)
             
