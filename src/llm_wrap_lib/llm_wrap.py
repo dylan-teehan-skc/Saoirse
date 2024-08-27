@@ -2,6 +2,7 @@ from typing import List, Dict
 import litellm
 from litellm.utils import get_valid_models
 import json
+import os
 from tool_handler.tool_bank import ToolBank
 
 class Response:
@@ -25,9 +26,9 @@ class Response:
 class DynamicLLMWrapper:
     def __init__(self):
         self.available_models: Dict[str, str] = {}
-        self._default_model: str = None
         self.model_costs: Dict[str, float] = {}
         self.total_cost: float = 0.0
+        self.config = self.load_config()
         self.initialize_models()
 
     def initialize_models(self):
@@ -36,9 +37,13 @@ class DynamicLLMWrapper:
         for model in valid_models:
             self.available_models[model] = model
         
-        # Set the default model to the first available model
-        if valid_models and self._default_model is None:
-            self._default_model = valid_models[0]
+        # Set the default model from config, or use the first available model as fallback
+        self._default_model = self.config.get('default_model')
+        if self._default_model not in self.available_models:
+            if valid_models:
+                self._default_model = valid_models[0]
+            else:
+                self._default_model = None
 
     @property
     def default_model(self) -> str:
@@ -49,6 +54,9 @@ class DynamicLLMWrapper:
         if model not in self.available_models:
             raise ValueError(f"Model {model} is not available")
         self._default_model = model
+        # Update the config file with the new default model
+        self.config['default_model'] = model
+        self.save_config()
 
     def get_available_models(self) -> List[str]:
         return list(self.available_models.keys())
@@ -75,7 +83,10 @@ class DynamicLLMWrapper:
         # else we need to pass none
         if not tools:
             tools = None
-            
+
+        if self.config.get('mocking', False):
+            # Return a mocked response
+            return self.mock_response(prompt, model_name)
 
         while True:
             response = litellm.completion(model=model_name, messages=messages, tools=tools, **kwargs)
@@ -120,3 +131,24 @@ class DynamicLLMWrapper:
         """Reset all cost tracking to zero"""
         self.model_costs.clear()
         self.total_cost = 0.0
+
+    def load_config(self):
+        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        with open(config_path, 'r') as config_file:
+            return json.load(config_file)
+
+    def save_config(self):
+        config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+        with open(config_path, 'w') as config_file:
+            json.dump(self.config, config_file, indent=2)
+
+    def mock_response(self, prompt: str, model_name: str) -> Response:
+        mocked_content = f"Mocked response for prompt: {prompt[:50]}..."
+        mocked_cost = 0.0001  # A small cost to simulate API call
+        
+        self._update_return_costs({"_hidden_params": {"response_cost": mocked_cost}}, model_name)
+        
+        return Response({
+            "content": mocked_content,
+            "cost": format(mocked_cost, '.4f')
+        })
