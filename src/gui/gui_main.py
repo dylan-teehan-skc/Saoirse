@@ -3,13 +3,13 @@ import json
 from PySide6.QtWidgets import (
     QFrame, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem, QGraphicsView, QGraphicsScene, 
     QGraphicsItem, QGraphicsEllipseItem, QGraphicsLineItem, QPushButton, QFileDialog, QInputDialog, QComboBox, QSplitter, 
-    QLabel, QCheckBox, QGraphicsProxyWidget, QComboBox, QApplication, QMessageBox
+    QLabel, QCheckBox, QGraphicsProxyWidget, QApplication, QMessageBox, QScrollArea
 )
 from PySide6.QtCore import (
     Qt, QPointF, QRectF, Signal, QObject, QSize, QMimeData, QThread, Slot 
 )
 from PySide6.QtGui import (
-    QPen, QColor, QPainter, QBrush, QDrag
+    QPen, QColor, QPainter, QBrush, QDrag, QPixmap
 )
 from gui.state import State, StateMachine, StateWrapper
 from agent_handler.agent import Agent
@@ -31,31 +31,43 @@ class StateMachineWorker(QObject):
         except Exception as e:
             self.error.emit(str(e))
 
+class DraggableAgentWidget(QLabel):
+    def __init__(self, agent, parent=None):
+        super().__init__(parent)
+        self.agent = agent
+        self.setText(self.format_text(agent.get_name()))
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("border: 1px solid black; padding: 5px;")
+        self.setFixedSize(100, 50)
+    
+    def format_text(self, text):
+        words = text.split()
+        if len(words) > 1:
+            mid = len(words) // 2
+            return '\n'.join([' '.join(words[:mid]), ' '.join(words[mid:])])
+        return text
 
-
-#drag component doesnt work yet kill me but that's tommorow me problemos
-class DragMeDown(QComboBox):  #1D reference thanks
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start_position = event.pos()
-        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if not (event.buttons() & Qt.LeftButton):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
         if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
             return
 
         drag = QDrag(self)
         mime_data = QMimeData()
-        mime_data.setText(self.currentText())
+        mime_data.setText(self.agent.get_name())
         drag.setMimeData(mime_data)
 
-        drop_action = drag.exec(Qt.CopyAction | Qt.MoveAction)
-        
-        if drop_action == Qt.MoveAction:
-            print(f"Dragged: {self.currentText()}")
-    
+        pixmap = QPixmap(self.size())
+        self.render(pixmap)
+        drag.setPixmap(pixmap)
+
+        drag.exec(Qt.DropAction.CopyAction)
+
 class Sidebar(QWidget):
     toggle_signal = Signal(bool)
 
@@ -336,6 +348,7 @@ class NodeEditor(QGraphicsView):
         self.state_machine.add_state(state)
        
         print(f"Added node for agent: {agent.get_name()}")  # Debug print
+        return node_item  # Return the created node_item
 
     
     def wheelEvent(self, event):
@@ -437,9 +450,6 @@ class MainWindow(QMainWindow):
         self.agent_combo = QComboBox()
         button_layout.addWidget(self.agent_combo)
 
-        # self.agent_combo = DragMeDown()
-        # button_layout.addWidget(self.agent_combo)
-
         add_agent_button = QPushButton("Add Agent")
         add_agent_button.clicked.connect(self.add_agent)
         button_layout.addWidget(add_agent_button)
@@ -455,6 +465,16 @@ class MainWindow(QMainWindow):
         run_button = QPushButton("Run State Machine")
         run_button.clicked.connect(self.run_state_machine)
         button_layout.addWidget(run_button)
+
+        # Add draggable agents list
+        self.agents_list = QListWidget()
+        self.agents_list.setFlow(QListWidget.LeftToRight)
+        self.agents_list.setWrapping(False)
+        self.agents_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.agents_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.agents_list.setMaximumHeight(52)
+        content_layout.addWidget(QLabel("Draggable Agents:"))
+        content_layout.addWidget(self.agents_list)
 
         self.node_editor = NodeEditor(self.agents)
         content_layout.addWidget(self.node_editor)
@@ -484,17 +504,21 @@ class MainWindow(QMainWindow):
         self.sidebar.update_properties(agent)
         if not self.sidebar.content.isVisible():
             self.toggle_sidebar(True)
-    # def update_sidebar(self, agent):
-    #     print(f"MainWindow updating sidebar for agent: {agent.get_name()}")  # Debug print
-    #     self.sidebar.update_properties(agent)
-
-    
 
     def set_agents(self, agents):
         self.agents = agents
         self.agent_combo.clear()
         self.agent_combo.addItems(self.agents.keys())
         self.node_editor.agents = self.agents
+        
+        # Add draggable agent widgets
+        self.agents_list.clear()
+        for agent_name, agent in self.agents.items():
+            item = QListWidgetItem(self.agents_list)
+            widget = DraggableAgentWidget(agent)
+            item.setSizeHint(widget.sizeHint())
+            self.agents_list.addItem(item)
+            self.agents_list.setItemWidget(item, widget)
 
     def add_agent(self):
         selected_agent_name = self.agent_combo.currentText()
