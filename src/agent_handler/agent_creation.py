@@ -35,11 +35,21 @@ dylan_task = Task(
     expected_output="An explanation of where you want to go with your reasoning and pricepoints",
     output_json=False)
 
+mediator_task = Task(
+    description="Help both parties reach an agreement",
+    expected_output="An agreement between both parties",
+    output_json=False)
+
 def complete_tasks():
     Dylan.set_task(dylan_task)
     Mia.set_task(mia_task)
 
-    Dylan.complete_task()
-    Mia.complete_task()
+    Dylan_Response = Dylan.execute_task()
+    Mia_response = Mia.execute_task()
+    
+    Mediator.set_previous_agent_context(f"Dylan Response {Dylan_Response} Mia response: {Mia_response}")
+    
+    Mediator.set_task(mediator_task)
+    Mediator.execute_task()
 
 

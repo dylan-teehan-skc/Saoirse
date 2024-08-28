@@ -68,17 +68,18 @@ class Agent:
         
 
     def write_response_to_file(self, description, expected_output, response):
-            response_content = dedent(f"""
-            <user>
-                Agent: {self.get_name()}
-                description of task: {description}
-                Expected Output: {expected_output}
-            </user>
-            <ai_response>
-                Response: {response.get_response_content()}
-                Cost for response: {response.get_cost()}
-            </ai_response>
-            """)
+            response_content = (
+f"""
+<user>
+    Agent: {self.get_name()}
+    description of task: {description}
+    Expected Output: {expected_output}
+</user>
+<ai_response>
+    Response: {response.get_response_content()}
+    Cost for response: {response.get_cost()}
+</ai_response>
+""")
             with open('response.txt', 'a', encoding='utf-8') as file:
                 file.write(response_content)
     def write_context_to_file(self, context):
