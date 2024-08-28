@@ -29,8 +29,8 @@ class State:
     def get_response(self):
         return self.response
 
-    def get_next_state(self):
-        return self.connections[0] if self.connections else None
+    def get_next_states(self):
+        return self.connections
 
 class StateWrapper(QObject):
     response_ready = Signal(str)
@@ -56,28 +56,37 @@ class StateMachine(QObject):
         self.states = []
         self.current_state = None
         self.context_passing = {}
+        self.accumulated_context = {}
 
     def run(self):
-        context = None
+        self.accumulated_context.clear()
         while self.current_state:
             print(f"Executing state: {self.current_state.get_name()}")
             wrapper = StateWrapper(self.current_state)
             self.emitStateChanged(wrapper)
-            result = self.current_state.execute_task(context)
+            result = self.current_state.execute_task(self.current_state.context)
             wrapper.update_response(result)
-            next_state = self.current_state.get_next_state()
-            if next_state:
-                if self.should_pass_context(self.current_state.get_name(), next_state.get_name()):
-                    context = f"{self.current_state.get_name()} Response: {result}"
-                    next_state.agent.set_previous_agent_context(context)
-                else:
-                    context = None
-                    next_state.agent.set_previous_agent_context(None)
-                self.current_state = next_state
+            
+            # Accumulate context
+            self.accumulated_context[self.current_state.get_name()] = result
+
+            next_states = self.current_state.get_next_states()
+            if next_states:
+                for next_state in next_states:
+                    if self.should_pass_context(self.current_state.get_name(), next_state.get_name()):
+                        # Pass accumulated context to the next state
+                        next_state.context = self.get_accumulated_context_string()
+                    else:
+                        next_state.context = None
+                
+                self.current_state = next_states[0]  # Move to the first next state
             else:
                 print(f"Final state reached. Execution complete.")
                 self.emitExecutionFinished()
                 break
+
+    def get_accumulated_context_string(self):
+        return "\n".join([f"{state}: {response}" for state, response in self.accumulated_context.items()])
 
     def should_pass_context(self, from_state_name, to_state_name):
         return self.context_passing.get(from_state_name, {}).get(to_state_name, False)

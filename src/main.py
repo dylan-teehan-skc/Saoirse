@@ -8,16 +8,17 @@ from gui.gui_main import MainWindow
 
 def create_sample_agents():
     agents = {
-        "Researcher": Agent("Researcher", "Gather information", "Specializes in finding and analyzing data", True),
-        "Writer": Agent("Writer", "Write the context passed to you", "Skilled in crafting compelling narratives", True),
+        "Mia": Agent("Negotiator Mia", "Convince the others you want to go to New York to see Taylor Swift", "A college student who will spend all their money on Taylor Swift", False),
+        "Jack": Agent("Negotiator Jack", "Convice the others to go skiing in France", "Skilled in crafting compelling narratives", False),
+        "Dylan": Agent("Negotiator Dylan", "Convince the others to go to the beach in Dubai", "A beach lover who is persuasive", False),
+        "Mediator":Agent("Mediator", "Help the group reach a consensus", "A mediator who can help resolve conflicts", False)
     }
     return agents
 
 def create_sample_tasks():
     tasks = {
-        "Research": Task("Conduct research on Slavoj Zizek", "A comprehensive report on Zizek"),
-        "Write": Task("write the context (pprevious conversations) passed to you", "Write a response based on the context passed to you")
-    }
+        "Negotiate": Task("Negotiate with the group", "Convince the group to choose your destination"),
+        "MakeDecision": Task("Make a decision", "Choose a destination for the group")}
     return tasks
 
 def main():
@@ -28,8 +29,10 @@ def main():
     tasks = create_sample_tasks()
 
     # Assign tasks to agents
-    agents["Researcher"].set_task(tasks["Research"])
-    agents["Writer"].set_task(tasks["Write"])
+    agents["Mia"].set_task(tasks["Negotiate"])
+    agents["Jack"].set_task(tasks["Negotiate"])
+    agents["Dylan"].set_task(tasks["Negotiate"])
+    agents["Mediator"].set_task(tasks["MakeDecision"])
 
     # Create and show the main window
     window = MainWindow()
