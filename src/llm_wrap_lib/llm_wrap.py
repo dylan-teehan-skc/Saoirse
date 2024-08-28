@@ -65,7 +65,11 @@ class DynamicLLMWrapper:
         return list(self.available_models.keys())
 
     def _update_return_costs(self, response, model_name: str):
-        cost = response._hidden_params["response_cost"]
+        if isinstance(response, dict):
+            cost = response.get("response_cost", 0.0)
+        else:
+            cost = response._hidden_params.get("response_cost", 0.0)
+
         if model_name not in self.model_costs:
             self.model_costs[model_name] = 0.0
 
@@ -153,7 +157,7 @@ class DynamicLLMWrapper:
         mocked_content = f"Mocked response for prompt: {prompt[:50]}..."
         mocked_cost = 0.0001  # A small cost to simulate API call
         
-        self._update_return_costs({"_hidden_params": {"response_cost": mocked_cost}}, model_name)
+        self._update_return_costs({"response_cost": mocked_cost}, model_name)
         
         return Response({
             "content": mocked_content,
