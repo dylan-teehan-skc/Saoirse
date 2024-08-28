@@ -1,4 +1,4 @@
 {
-  "mocking": true,
+  "mocking": false,
   "default_model": "gpt-3.5-turbo"
 }

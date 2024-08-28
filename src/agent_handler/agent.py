@@ -55,6 +55,27 @@ class Agent:
     def set_json_output(self, json_output):
         self._json_output = json_output
 
+
+    def read_prompt_from_file(self, file_path):
+        with open(file_path, 'r') as file:
+            return file.read().strip()
+        
+
+    def write_response_to_file(self, description, expected_output, response):
+            response_content = dedent(f"""
+            <user>
+                Agent: {self.get_name()}
+                description of task: {description}
+                Expected Output: {expected_output}
+            </user>
+            <ai_response>
+                Response: {response.get_response_content()}
+                Cost for response: {response.get_cost()}
+            </ai_response>
+            """)
+            with open('response.txt', 'a', encoding='utf-8') as file:
+                file.write(response_content)
+                
     def execute_task(self):
         if self._current_task is None:
             raise ValueError("No task is set for the agent")
@@ -63,7 +84,7 @@ class Agent:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         prompt_file = os.path.join(script_dir, "prompt.txt")
 
-        prompt_template = read_prompt_from_file(prompt_file)
+        prompt_template = self.read_prompt_from_file(prompt_file)
         
         description = self._current_task.get_description()
         expected_output = self._current_task.get_expected_output()
@@ -85,23 +106,3 @@ class Agent:
         self.write_response_to_file(description, expected_output, response)
 
         return response.get_response_content()
-
-def read_prompt_from_file(file_path):
-    with open(file_path, 'r') as file:
-        return file.read().strip()
-    
-
-def write_response_to_file(self, description, expected_output, response):
-        response_content = dedent(f"""
-        <user>
-            Agent: {self.get_name()}
-            description of task: {description}
-            Expected Output: {expected_output}
-        </user>
-        <ai_response>
-            Response: {response.get_response_content()}
-            Cost for response: {response.get_cost()}
-        </ai_response>
-        """)
-        with open('response.txt', 'a', encoding='utf-8') as file:
-            file.write(response_content)
