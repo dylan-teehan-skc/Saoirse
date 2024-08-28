@@ -35,7 +35,7 @@ class Tool:
         self._def_params = list_of_params
     
     def export(self):
-        if not self._def_params:
+        if self._def_params is None:
             raise ValueError("Parameters have not been defined. Call define_function_param first.")
 
         properties = {}
