@@ -1,5 +1,6 @@
 import pytest
 from src.llm_wrap_lib.llm_wrap import DynamicLLMWrapper
+import os
 
 @pytest.fixture
 def wrapper():
@@ -76,8 +77,14 @@ def test_mocking_disabled(wrapper):
     wrapper.config['mocking'] = False
     wrapper.save_config()
 
-    # This test assumes that when mocking is disabled, the actual LLM call will be made.
-    # You might want to add appropriate assertions based on the expected behavior of your actual LLM calls.
-    # For now, we'll just check that the response is not a mocked one.
+    # Check if the API key is set
+    api_key = os.environ.get('API_KEY')
+    assert api_key is not None, "API_KEY is not set in the environment"
+
+    # Set the API key for the OpenAI client
+    import openai
+    openai.api_key = api_key
+
+    # Rest of your test...
     result = wrapper.call_model("Test prompt")
     assert "Mocked response for prompt: Test prompt" not in result.get_response_content()
