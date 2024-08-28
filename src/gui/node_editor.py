@@ -1,9 +1,4 @@
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsLineItem, QGraphicsItem, QGraphicsEllipseItem, QGraphicsProxyWidget, QCheckBox
-from PySide6.QtCore import Qt, Signal, Slot, QPointF, QRectF, QObject
-from PySide6.QtGui import QPen, QColor, QPainter, QBrush
-
-from gui.state import State, StateWrapper, StateMachine
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsLineItem, QGraphicsItem, QGraphicsEllipseItem, QGraphicsProxyWidget, QCheckBox
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsLineItem, QGraphicsItem, QGraphicsEllipseItem
 from PySide6.QtCore import Qt, Signal, Slot, QPointF, QRectF, QObject
 from PySide6.QtGui import QPen, QColor, QPainter, QBrush
 
@@ -75,44 +70,20 @@ class Port(QGraphicsEllipseItem):
         super().hoverLeaveEvent(event)
 
 class Connection(QGraphicsLineItem):
-    def __init__(self, start_item, end_item, pass_context=False):
+    def __init__(self, start_item, end_item):
         super().__init__()
         self.start_item = start_item
         self.end_item = end_item
-        self.pass_context = pass_context
         self.setZValue(-1)
         self.setPen(QPen(Qt.green, 2))
         self.start_item.connections.append(self)
         self.end_item.connections.append(self)
         self.updatePosition()
 
-        self.context_checkbox = QCheckBox("Pass Context")
-        self.context_checkbox.setChecked(pass_context)
-        self.context_checkbox.stateChanged.connect(self.toggleContextPassing)
-
-        self.checkbox_proxy = QGraphicsProxyWidget(self)
-        self.checkbox_proxy.setWidget(self.context_checkbox)
-        self.updateCheckboxPosition()
-
-    def toggleContextPassing(self, state):
-        self.pass_context = (state == Qt.Checked)
-
     def updatePosition(self):
         start_pos = self.start_item.mapToScene(self.start_item.output_port.pos() + QPointF(5, 5))
         end_pos = self.end_item.mapToScene(self.end_item.input_port.pos() + QPointF(5, 5))
         self.setLine(start_pos.x(), start_pos.y(), end_pos.x(), end_pos.y())
-        self.updateCheckboxPosition()
-
-    def updateCheckboxPosition(self):
-        if self.scene():
-            line = self.line()
-            center = line.pointAt(0.2)
-            self.checkbox_proxy.setPos(center)
-
-    def paint(self, painter, option, widget=None):
-        super().paint(painter, option, widget)
-        if self.pass_context:
-            painter.drawText(self.boundingRect().center(), "Context")
 
 class NodeEditor(QGraphicsView):
     node_clicked = Signal(StateWrapper)
@@ -138,11 +109,13 @@ class NodeEditor(QGraphicsView):
         self.connection_start = None
         self.current_connection = None
         self.agents = agents
-        self.states = {}
+        self.nodes = {}
         self.setAcceptDrops(True)
 
         self.last_node_pos = QPointF(0, 0)
         self.node_spacing = 120
+
+        self.context_passing = {}
 
     def update_last_node_pos(self, pos):
         self.last_node_pos = pos
@@ -153,15 +126,6 @@ class NodeEditor(QGraphicsView):
             if isinstance(item, NodeItem):
                 item.highlight(item.state == state_wrapper.get_state())
         self.node_properties_updated.emit(state_wrapper)
-        state_wrapper.response_ready.connect(self.on_response_ready)
-
-    @Slot(str)
-    def on_response_ready(self, response):
-        current_state = self.state_machine.current_state
-        if current_state:
-            state_wrapper = StateWrapper(current_state)
-            state_wrapper.update_response(response)
-            self.node_properties_updated.emit(state_wrapper)
 
     def drawBackground(self, painter, rect):
         super().drawBackground(painter, rect)
@@ -192,10 +156,8 @@ class NodeEditor(QGraphicsView):
                 self.addNode(agent, pos.x(), pos.y())
                 event.setDropAction(Qt.DropAction.MoveAction)
                 event.accept()
-                print(f"Dropped: {agent_name} at ({pos.x()}, {pos.y()})")
 
     def on_node_clicked(self, state):
-        print(f"NodeEditor received click for state: {state.get_name()}")
         self.node_clicked.emit(StateWrapper(state))
 
     def addNode(self, agent, x=None, y=None):
@@ -208,10 +170,10 @@ class NodeEditor(QGraphicsView):
         node_item.signals.clicked.connect(self.on_node_clicked)
         self.scene.addItem(node_item)
         self.state_machine.add_state(state)
+        self.nodes[state.get_name()] = node_item
         
         self.last_node_pos = QPointF(x, y)
         
-        print(f"Added node for agent: {agent.get_name()} at ({x}, {y})")
         return node_item
 
     def wheelEvent(self, event):
@@ -246,7 +208,6 @@ class NodeEditor(QGraphicsView):
                 connection = Connection(self.connection_start, end_item)
                 self.scene.addItem(connection)
                 self.state_machine.add_transition(self.connection_start.state, end_item.state)
-                print(f"Transition created from {self.connection_start.state.get_name()} to {end_item.state.get_name()}")
             self.scene.removeItem(self.current_connection)
             self.current_connection = None
             self.connection_start = None
@@ -265,16 +226,41 @@ class NodeEditor(QGraphicsView):
                 return item
         return None
 
-    @Slot(StateWrapper)
-    def highlight_current_node(self, state_wrapper):
-        state = state_wrapper.get_state()
-        for item in self.scene.items():
-            if isinstance(item, NodeItem):
-                item.highlight(item.state == state)
-        self.node_properties_updated.emit(state_wrapper)
-
     @Slot()
     def clear_highlights(self):
         for item in self.scene.items():
             if isinstance(item, NodeItem):
                 item.highlight(False)
+
+    def get_clicked_state(self):
+        for item in self.scene.selectedItems():
+            if isinstance(item, NodeItem):
+                return item.state
+        return None
+
+    def should_pass_context(self, from_state, to_agent_name):
+        return self.context_passing.get(from_state.get_name(), {}).get(to_agent_name, False)
+
+    def set_context_passing(self, from_state, to_agent_name, should_pass):
+        if from_state.get_name() not in self.context_passing:
+            self.context_passing[from_state.get_name()] = {}
+        self.context_passing[from_state.get_name()][to_agent_name] = should_pass
+        self.state_machine.set_context_passing(from_state.get_name(), to_agent_name, should_pass)
+
+    def load_state_machine(self, data, agents):
+        self.state_machine = StateMachine.from_dict(data, agents)
+        self.scene.clear()
+        self.nodes.clear()
+        for state_data in data['states']:
+            state = next(s for s in self.state_machine.states if s.get_name() == state_data['name'])
+            node_item = self.addNode(state.agent, state_data['x'], state_data['y'])
+            self.nodes[state.get_name()] = node_item
+        for state_data in data['states']:
+            for connection_data in state_data.get('connections', []):
+                from_item = self.nodes[state_data['name']]
+                to_item = self.nodes[connection_data['to']]
+                connection = Connection(from_item, to_item)
+                self.scene.addItem(connection)
+        
+        self.context_passing = data.get('context_passing', {})
+        self.state_machine.context_passing = self.context_passing

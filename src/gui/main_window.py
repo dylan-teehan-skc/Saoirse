@@ -1,14 +1,14 @@
-import json
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, 
-    QComboBox, QSplitter, QLabel, QListWidget, QListWidgetItem, QMessageBox
+    QComboBox, QSplitter, QLabel, QListWidget, QListWidgetItem, QMessageBox,
+    QMenu
 )
 from PySide6.QtCore import Qt, QThread, Slot, Signal, QObject
+from PySide6.QtGui import QCursor, QAction
 from gui.node_editor import NodeEditor, Connection
 from gui.sidebar import Sidebar
 from gui.agent_widget import DraggableAgentWidget
 from gui.state import StateMachine
-from gui.agent_widget import DraggableAgentWidget
 import json
 
 class StateMachineWorker(QObject):
@@ -57,6 +57,10 @@ class MainWindow(QMainWindow):
         add_agent_button.clicked.connect(self.add_agent)
         button_layout.addWidget(add_agent_button)
 
+        self.pass_context_button = QPushButton("Pass Context")
+        self.pass_context_button.clicked.connect(self.show_pass_context_menu)
+        button_layout.addWidget(self.pass_context_button)
+
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_state_machine)
         button_layout.addWidget(save_button)
@@ -90,6 +94,7 @@ class MainWindow(QMainWindow):
 
         self.node_editor.node_clicked.connect(self.update_sidebar_on_click)
         self.node_editor.node_properties_updated.connect(self.update_sidebar_with_context_and_response)
+        self.node_editor.node_clicked.connect(self.update_pass_context_button)
 
         self.worker = None
         self.thread = None
@@ -131,14 +136,6 @@ class MainWindow(QMainWindow):
         file_name, _ = QFileDialog.getSaveFileName(self, "Save State Machine", "", "JSON Files (*.json)")
         if file_name:
             data = self.node_editor.state_machine.to_dict()
-            for state in data['states']:
-                state['connections'] = []
-                for connection in self.node_editor.scene.items():
-                    if isinstance(connection, Connection) and connection.start_item.state.get_name() == state['name']:
-                        state['connections'].append({
-                            'to': connection.end_item.state.get_name(),
-                            'pass_context': connection.pass_context
-                        })
             with open(file_name, 'w') as f:
                 json.dump(data, f)
 
@@ -147,19 +144,7 @@ class MainWindow(QMainWindow):
         if file_name:
             with open(file_name, 'r') as f:
                 data = json.load(f)
-                self.node_editor.state_machine = StateMachine.from_dict(data, self.agents)
-                self.node_editor.scene.clear()
-                node_items = {}
-                for state_data in data['states']:
-                    state = next(s for s in self.node_editor.state_machine.states if s.get_name() == state_data['name'])
-                    node_item = self.node_editor.addNode(state.agent, state_data['x'], state_data['y'])
-                    node_items[state.get_name()] = node_item
-                for state_data in data['states']:
-                    for connection_data in state_data.get('connections', []):
-                        from_item = node_items[state_data['name']]
-                        to_item = node_items[connection_data['to']]
-                        connection = Connection(from_item, to_item, connection_data['pass_context'])
-                        self.node_editor.scene.addItem(connection)
+                self.node_editor.load_state_machine(data, self.agents)
 
     def update_sidebar_on_click(self, state_wrapper):
         state = state_wrapper.get_state()
@@ -206,3 +191,28 @@ class MainWindow(QMainWindow):
             self.thread.quit()
             self.thread.wait()
         super().closeEvent(event)
+
+    def update_pass_context_button(self, state_wrapper):
+        self.pass_context_button.setEnabled(True)
+        self.current_state = state_wrapper.get_state()
+
+    def show_pass_context_menu(self):
+        if not hasattr(self, 'current_state'):
+            return
+
+        menu = QMenu(self)
+        for agent_name, agent in self.agents.items():
+            if agent_name != self.current_state.get_name():
+                action = QAction(agent_name, self)
+                action.setCheckable(True)
+                action.setChecked(self.node_editor.should_pass_context(self.current_state, agent_name))
+                action.triggered.connect(lambda checked, s=self.current_state, a=agent_name: 
+                                         self.toggle_context_passing(s, a, checked))
+                menu.addAction(action)
+        
+        menu.exec(QCursor.pos())
+
+    def toggle_context_passing(self, from_state, to_agent_name, should_pass):
+        self.node_editor.set_context_passing(from_state, to_agent_name, should_pass)
+        self.node_editor.state_machine.set_context_passing(from_state.get_name(), to_agent_name, should_pass)
+        print(f"Context passing from {from_state.get_name()} to {to_agent_name} set to {should_pass}")

@@ -9,16 +9,14 @@ from gui.gui_main import MainWindow
 def create_sample_agents():
     agents = {
         "Researcher": Agent("Researcher", "Gather information", "Specializes in finding and analyzing data", True),
-        "Writer": Agent("Writer", "Create content", "Skilled in crafting compelling narratives", True),
-        "Editor": Agent("Editor", "Refine content", "Expert in improving and polishing written work", True),
+        "Writer": Agent("Writer", "Write the context passed to you", "Skilled in crafting compelling narratives", True),
     }
     return agents
 
 def create_sample_tasks():
     tasks = {
-        "Research": Task("Conduct research on AI advancements", "A comprehensive report on recent AI breakthroughs"),
-        "Write": Task("Write an article on AI ethics", "A 1000-word article discussing ethical considerations in AI"),
-        "Edit": Task("Edit the AI ethics article", "A polished version of the AI ethics article"),
+        "Research": Task("Conduct research on Slavoj Zizek", "A comprehensive report on Zizek"),
+        "Write": Task("write the context (pprevious conversations) passed to you", "Write a response based on the context passed to you")
     }
     return tasks
 
@@ -32,7 +30,6 @@ def main():
     # Assign tasks to agents
     agents["Researcher"].set_task(tasks["Research"])
     agents["Writer"].set_task(tasks["Write"])
-    agents["Editor"].set_task(tasks["Edit"])
 
     # Create and show the main window
     window = MainWindow()
