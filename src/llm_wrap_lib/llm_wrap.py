@@ -44,6 +44,9 @@ class DynamicLLMWrapper:
                 self._default_model = valid_models[0]
             else:
                 self._default_model = None
+                print("Warning: No valid models found. Using mock responses.")
+                self.config['mocking'] = True
+                self.save_config()
 
     @property
     def default_model(self) -> str:
@@ -72,6 +75,10 @@ class DynamicLLMWrapper:
         return format(cost, '.4f')
         
     def call_model(self, prompt: str, model_name: str = None, tools: list = [], **kwargs) -> Response:
+        if self.config.get('mocking', False):
+            # Return a mocked response
+            return self.mock_response(prompt, model_name or self.default_model or "mock_model")
+
         if model_name is None:
             model_name = self.default_model
         if model_name not in self.available_models:
