@@ -41,4 +41,4 @@ jobs:
       run: |
         pytest
       env:
-        API_KEY: ${{ secrets.API_KEY }}
+        API_KEY: ${{ secrets.OPENAI_API_KEY }}
