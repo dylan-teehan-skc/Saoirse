@@ -44,6 +44,9 @@ class DynamicLLMWrapper:
                 self._default_model = valid_models[0]
             else:
                 self._default_model = None
+                print("Warning: No valid models found. Using mock responses.")
+                self.config['mocking'] = True
+                self.save_config()
 
     @property
     def default_model(self) -> str:
@@ -62,7 +65,11 @@ class DynamicLLMWrapper:
         return list(self.available_models.keys())
 
     def _update_return_costs(self, response, model_name: str):
-        cost = response._hidden_params["response_cost"]
+        if isinstance(response, dict):
+            cost = response.get("response_cost", 0.0)
+        else:
+            cost = response._hidden_params.get("response_cost", 0.0)
+
         if model_name not in self.model_costs:
             self.model_costs[model_name] = 0.0
 
@@ -72,6 +79,10 @@ class DynamicLLMWrapper:
         return format(cost, '.4f')
         
     def call_model(self, prompt: str, model_name: str = None, tools: list = [], **kwargs) -> Response:
+        if self.config.get('mocking', False):
+            # Return a mocked response
+            return self.mock_response(prompt, model_name or self.default_model or "mock_model")
+
         if model_name is None:
             model_name = self.default_model
         if model_name not in self.available_models:
@@ -146,7 +157,7 @@ class DynamicLLMWrapper:
         mocked_content = f"Mocked response for prompt: {prompt[:50]}..."
         mocked_cost = 0.0001  # A small cost to simulate API call
         
-        self._update_return_costs({"_hidden_params": {"response_cost": mocked_cost}}, model_name)
+        self._update_return_costs({"response_cost": mocked_cost}, model_name)
         
         return Response({
             "content": mocked_content,
