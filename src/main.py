@@ -8,9 +8,9 @@ from gui.gui_main import MainWindow
 
 def create_sample_agents():
     agents = {
-        "Mia": Agent("Negotiator Mia", "Convince the others you want to go to New York to see Taylor Swift", "A college student who will spend all their money on Taylor Swift", False),
-        "Jack": Agent("Negotiator Jack", "Convice the others to go skiing in France", "Skilled in crafting compelling narratives", False),
-        "Dylan": Agent("Negotiator Dylan", "Convince the others to go to the beach in Dubai", "A beach lover who is persuasive", False),
+        "Mia": Agent("Mia", "Convince the others you want to go to New York to see Taylor Swift", "A college student who will spend all their money on Taylor Swift", False),
+        "Jack": Agent("Jack", "Convice the others to go skiing in France", "Skilled in crafting compelling narratives", False),
+        "Dylan": Agent("Dylan", "Convince the others to go to the beach in Dubai", "A beach lover who is persuasive", False),
         "Mediator":Agent("Mediator", "Help the group reach a consensus", "A mediator who can help resolve conflicts", False)
     }
     return agents
