@@ -78,7 +78,7 @@ def test_mocking_disabled(wrapper):
     wrapper.save_config()
 
     # Check if the API key is set
-    api_key = os.environ.get('API_KEY')
+    api_key = os.environ.get('OPENAI_API_KEY')
     assert api_key is not None, "API_KEY is not set in the environment"
 
     # Set the API key for the OpenAI client
