@@ -57,4 +57,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: yourdockerhubusername/yourrepositoryname:latest
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/saoirse:latest
