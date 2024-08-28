@@ -73,7 +73,8 @@ class Agent:
             expected_output=expected_output,
             agent_name=self.get_name(),
             agent_goal=self.get_goal(),
-            agent_backstory=self.get_backstory()
+            agent_backstory=self.get_backstory(),
+            previous_agent_context=""  # Add this line
         )
 
         if self._json_output:
