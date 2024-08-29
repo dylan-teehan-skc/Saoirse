@@ -31,7 +31,7 @@ class NodeItem(QGraphicsItem):
         if self.is_highlighted:
             painter.setBrush(QBrush(Qt.yellow))
         else:
-            painter.setBrush(QBrush(Qt.white))
+            painter.setBrush(QBrush(QColor(0, 206, 209)))
         painter.drawRect(self.boundingRect())
         painter.drawText(10, 20, self.state.get_name())
 

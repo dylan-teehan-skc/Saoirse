@@ -1,14 +1,15 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog, 
     QComboBox, QSplitter, QLabel, QListWidget, QListWidgetItem, QMessageBox,
-    QMenu
+    QMenu, QInputDialog
 )
 from PySide6.QtCore import Qt, QThread, Slot, Signal, QObject
 from PySide6.QtGui import QCursor, QAction
 from gui.node_editor import NodeEditor, Connection
 from gui.sidebar import Sidebar
 from gui.agent_widget import DraggableAgentWidget
-from gui.state import StateMachine
+from gui.state import StateMachine, StateWrapper
+from agent_handler.task import Task
 import json
 
 class StateMachineWorker(QObject):
@@ -34,6 +35,7 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1000, 600)
 
         self.agents = {}
+        self.tasks = {}
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -60,6 +62,10 @@ class MainWindow(QMainWindow):
         self.pass_context_button = QPushButton("Pass Context")
         self.pass_context_button.clicked.connect(self.show_pass_context_menu)
         button_layout.addWidget(self.pass_context_button)
+
+        self.assign_task_button = QPushButton("Assign Task")
+        self.assign_task_button.clicked.connect(self.show_assign_task_menu)
+        button_layout.addWidget(self.assign_task_button)
 
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_state_machine)
@@ -94,7 +100,7 @@ class MainWindow(QMainWindow):
 
         self.node_editor.node_clicked.connect(self.update_sidebar_on_click)
         self.node_editor.node_properties_updated.connect(self.update_sidebar_with_context_and_response)
-        self.node_editor.node_clicked.connect(self.update_pass_context_button)
+        self.node_editor.node_clicked.connect(self.update_buttons)
 
         self.worker = None
         self.thread = None
@@ -151,7 +157,8 @@ class MainWindow(QMainWindow):
         self.sidebar.update_properties(state.agent)
         context_text = str(state.context) if state.context else "No context"
         response_text = str(state.get_response()) if state.get_response() else "No response yet"
-        self.sidebar.update_context_and_response(context_text, response_text)
+        task_text = state.agent.get_task().get_description() if state.agent.get_task() else "No task assigned"
+        self.sidebar.update_context_and_response(context_text, response_text, task_text)
         if not self.sidebar.content.isVisible():
             self.toggle_sidebar(True)
 
@@ -160,7 +167,8 @@ class MainWindow(QMainWindow):
         self.sidebar.update_properties(state.agent)
         context_text = str(state.context) if state.context else "No context"
         response_text = str(state.get_response()) if state.get_response() else "No response yet"
-        self.sidebar.update_context_and_response(context_text, response_text)
+        task_text = state.agent.get_task().get_description() if state.agent.get_task() else "No task assigned"
+        self.sidebar.update_context_and_response(context_text, response_text, task_text)
         if not self.sidebar.content.isVisible():
             self.toggle_sidebar(True)
 
@@ -192,8 +200,9 @@ class MainWindow(QMainWindow):
             self.thread.wait()
         super().closeEvent(event)
 
-    def update_pass_context_button(self, state_wrapper):
+    def update_buttons(self, state_wrapper):
         self.pass_context_button.setEnabled(True)
+        self.assign_task_button.setEnabled(True)
         self.current_state = state_wrapper.get_state()
 
     def show_pass_context_menu(self):
@@ -216,3 +225,42 @@ class MainWindow(QMainWindow):
         self.node_editor.set_context_passing(from_state, to_agent_name, should_pass)
         self.node_editor.state_machine.set_context_passing(from_state.get_name(), to_agent_name, should_pass)
         print(f"Context passing from {from_state.get_name()} to {to_agent_name} set to {should_pass}")
+
+    def show_assign_task_menu(self):
+        if not hasattr(self, 'current_state'):
+            return
+
+        menu = QMenu(self)
+        
+        new_task_action = QAction("Create New Task", self)
+        new_task_action.triggered.connect(self.create_new_task)
+        menu.addAction(new_task_action)
+
+        menu.addSeparator()
+
+        for task_name, task in self.tasks.items():
+            action = QAction(task_name, self)
+            action.triggered.connect(lambda checked, t=task: self.assign_task(t))
+            menu.addAction(action)
+        
+        menu.exec(QCursor.pos())
+
+    def create_new_task(self):
+        task_name, ok = QInputDialog.getText(self, "Create New Task", "Enter task name:")
+        if ok and task_name:
+            description, ok = QInputDialog.getText(self, "Task Description", "Enter task description:")
+            if ok:
+                expected_output, ok = QInputDialog.getText(self, "Expected Output", "Enter expected output:")
+                if ok:
+                    new_task = Task(description, expected_output)
+                    self.tasks[task_name] = new_task
+                    self.assign_task(new_task)
+
+    def assign_task(self, task):
+        if hasattr(self, 'current_state'):
+            self.current_state.agent.set_task(task)
+            print(f"Task '{task.get_description()}' assigned to agent {self.current_state.get_name()}")
+            self.update_sidebar_with_context_and_response(StateWrapper(self.current_state))
+
+    def set_tasks(self, tasks):
+        self.tasks = tasks

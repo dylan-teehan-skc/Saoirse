@@ -1,18 +1,19 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QPushButton, QLabel,
-    QScrollArea, QSizePolicy
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame, QPushButton, QLabel, QScrollArea
 from PySide6.QtCore import Qt, Signal, QSize
 
 class ExpandableLabel(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, title, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
-        self.label = QLabel(self)
-        self.label.setWordWrap(True)
-        self.expand_button = QPushButton("Expand", self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.title = title
+        self.title_label = QLabel(f"{title}:")
+        self.content_label = QLabel()
+        self.content_label.setWordWrap(True)
+        self.expand_button = QPushButton("Expand")
         self.expand_button.clicked.connect(self.toggle_expand)
-        self.layout.addWidget(self.label)
+        self.layout.addWidget(self.title_label)
+        self.layout.addWidget(self.content_label)
         self.layout.addWidget(self.expand_button)
         self.expanded = False
         self.full_text = ""
@@ -23,10 +24,10 @@ class ExpandableLabel(QWidget):
 
     def update_text(self):
         if self.expanded:
-            self.label.setText(self.full_text)
+            self.content_label.setText(self.full_text)
             self.expand_button.setText("Collapse")
         else:
-            self.label.setText(self.full_text[:100] + "..." if len(self.full_text) > 100 else self.full_text)
+            self.content_label.setText(self.full_text[:100] + "..." if len(self.full_text) > 100 else self.full_text)
             self.expand_button.setText("Expand")
 
     def toggle_expand(self):
@@ -55,14 +56,11 @@ class Sidebar(QWidget):
 
         self.content = QScrollArea()
         self.content.setWidgetResizable(True)
-        self.content.setFixedWidth(220)
-        self.content.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.content.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-
+        self.content.setFixedWidth(250)
+        
         content_widget = QWidget()
         self.content.setWidget(content_widget)
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(5, 5, 5, 5)
         
         self.name_label = QLabel()
         self.name_label.setWordWrap(True)
@@ -74,15 +72,18 @@ class Sidebar(QWidget):
         content_layout.addWidget(self.name_label)
         content_layout.addWidget(self.goal_label)
         content_layout.addWidget(self.backstory_label)
+        content_layout.addSpacing(10)
 
-        content_layout.addWidget(QLabel("Context:"))
-        self.context_label = ExpandableLabel()
+        self.task_label = QLabel()
+        self.task_label.setWordWrap(True)
+        content_layout.addWidget(QLabel("Task:"))
+        content_layout.addWidget(self.task_label)
+
+        self.context_label = ExpandableLabel("Context")
+        self.response_label = ExpandableLabel("Response")
+
         content_layout.addWidget(self.context_label)
-
-        content_layout.addWidget(QLabel("Response:"))
-        self.response_label = ExpandableLabel()
         content_layout.addWidget(self.response_label)
-
         content_layout.addStretch()
 
         self.layout.addWidget(self.toggle_bar)
@@ -90,14 +91,15 @@ class Sidebar(QWidget):
         
         self.content.hide()
 
-    def update_context_and_response(self, context, response):
-        self.context_label.set_text(context)
-        self.response_label.set_text(response)
-
     def update_properties(self, agent):
         self.name_label.setText(f"Name: {agent.get_name()}")
         self.goal_label.setText(f"Goal: {agent.get_goal()}")
         self.backstory_label.setText(f"Backstory: {agent.get_backstory()}")
+
+    def update_context_and_response(self, context, response, task):
+        self.task_label.setText(task)
+        self.context_label.set_text(context)
+        self.response_label.set_text(response)
 
     def toggle_sidebar(self):
         is_expanded = self.content.isVisible()

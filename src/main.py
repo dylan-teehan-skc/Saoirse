@@ -28,15 +28,10 @@ def main():
     agents = create_sample_agents()
     tasks = create_sample_tasks()
 
-    # Assign tasks to agents
-    agents["Mia"].set_task(tasks["Negotiate"])
-    agents["Jack"].set_task(tasks["Negotiate"])
-    agents["Dylan"].set_task(tasks["Negotiate"])
-    agents["Mediator"].set_task(tasks["MakeDecision"])
-
     # Create and show the main window
     window = MainWindow()
-    window.set_agents(agents)  # Use the new set_agents method
+    window.set_agents(agents)
+    window.set_tasks(tasks)  # New: Set the tasks
     window.show()
 
     sys.exit(app.exec())
