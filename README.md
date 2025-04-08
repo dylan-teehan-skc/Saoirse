@@ -3,7 +3,7 @@
 ## Overview
 ![image](https://github.com/user-attachments/assets/a401ea64-2038-49b1-b63c-a72b69f23e25)
 
-Saoirse is an agent pipeline and multi agent system editor with a graphical user interface. It allows users to create, visualize, and execute workflows composed of AI agents. The system uses a dynamic LLM (Language Model) wrapper, supporting various AI models, and includes a tool handling system for extended functionality.
+Saoirse is an agent pipeline and multi agent system editor with a graphical user interface. It allows users to create, visualise, and execute workflows composed of AI agents. The system uses a dynamic LLM (Language Model) wrapper, supporting various AI models, and includes a tool handling system for extended functionality.
 
 ## Features
 
